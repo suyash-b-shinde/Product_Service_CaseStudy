@@ -1,256 +1,126 @@
 This document outlines the developer prompts used with GitHub Copilot to build a basic e-commerce backend in Spring Boot. 
 It covers MySQL integration, JWT-based authentication and full CRUD operations for products.
+Project Setup
 
-1. Initial Project Setup
-Create a new Spring Boot application with these dependencies:
+1. Maven Project Setup
+Prompt:
+Create a Maven pom.xml file for Spring Boot project named 'productapp':
+- Group ID: com.productapp
+- Java 17, Spring Boot 3.1.0
+- Dependencies: spring-boot-starter-web, spring-boot-starter-data-jpa, spring-boot-starter-security, mysql-connector-j, jjwt-api:0.11.5, jjwt-impl:0.11.5, jjwt-jackson:0.11.5
+- Include spring-boot-maven-plugin
 
-spring-boot-starter-web
 
-spring-boot-starter-data-jpa
+ JWT Security Implementation
 
-spring-boot-starter-security
+2. JWT Service Class
+Prompt:
+Create JwtService class in com.productapp.security package:
+- @Service annotation
+- String secret key for JWT signing
+- Method generateToken(String username) - creates JWT with 24 hour expiration
+- Method extractUsername(String token) - extracts username from JWT
+- Method validateToken(String token, String username) - validates JWT token
+- Use io.jsonwebtoken.Jwts for JWT operations
+3. JWT Authentication Filter
+Prompt:
+Create JwtAuthFilter class extending OncePerRequestFilter in com.productapp.security:
+- Inject JwtService and UserDetailsService
+- Override doFilterInternal method to extract JWT from Authorization header
+- If valid token, set authentication in SecurityContext
+- Add @Component annotation
+4. Security Configuration
+Prompt:
+Create SecurityConfig class in com.productapp.security:
+- @Configuration and @EnableWebSecurity annotations
+- Configure SecurityFilterChain bean to permit /auth/** endpoints and secure others
+- Disable CSRF, set session to STATELESS
+- Add JwtAuthFilter before UsernamePasswordAuthenticationFilter
+- Create PasswordEncoder bean (BCryptPasswordEncoder)
+- Create AuthenticationManager bean
 
-spring-boot-starter-validation
+ User Management
+5. User Entity
+Prompt:
+Create User entity in com.productapp.entity:
+- @Entity and @Table(name = "users")
+- Fields: Long id, String name, String email, String password
+- @Id @GeneratedValue for id
+- @Column(unique = true) for email
+- Include constructors, getters, setters
+6. User Repository
+Prompt:
+Create UserRepository interface in com.productapp.repository:
+- Extend JpaRepository<User, Long>
+- Method: Optional<User> findByEmail(String email)
+- @Repository annotation
+7. Custom UserDetailsService
+Prompt:
+Create CustomUserDetailsService in com.productapp.security implementing UserDetailsService:
+- @Service annotation
+- Inject UserRepository
+- Override loadUserByUsername method to find user by email
+- Return User.builder().username(user.getEmail()).password(user.getPassword()).authorities("USER").build()
+8. Authentication DTOs
+Prompt:
+Create in com.productapp.dto package:
+1. LoginRequest class with String email and String password fields
+2. RegisterRequest class with String name, String email, String password fields  
+3. JwtResponse class with String token field
+Include constructors, getters, setters for all
+9. Auth Controller
+Prompt:
+Create AuthController in com.productapp.controller:
+- @RestController and @RequestMapping("/auth")
+- Inject UserRepository, PasswordEncoder, AuthenticationManager, JwtService
+- POST /register endpoint - save user with encoded password
+- POST /login endpoint - authenticate user and return JWT token
+- Return appropriate ResponseEntity responses
 
-spring-boot-starter-test
 
-mysql-connector-j
+ Product CRUD Implementation
 
-lombok
+10. Product Entity
+Prompt:
+Create Product entity in com.productapp.entity:
+- @Entity and @Table(name = "products")
+- Fields: Long id, String name, String category, Double price, String description
+- @Id @GeneratedValue for id
+- Include constructors, getters, setters
+11. Product Repository
+Prompt:
+Create ProductRepository interface in com.productapp.repository:
+- Extend JpaRepository<Product, Long>
+- @Repository annotation
+12. Product Service
+Prompt:
+Create ProductService class in com.productapp.service:
+- @Service annotation
+- Inject ProductRepository
+- Methods: getAllProducts(), getProductById(Long id), saveProduct(Product product), updateProduct(Long id, Product product), deleteProduct(Long id)
+- Include exception handling for product not found
+13. Product Controller
+Prompt:
+Create ProductController in com.productapp.controller:
+- @RestController and @RequestMapping("/products")
+- Inject ProductService
+- Endpoints: GET /, GET /{id}, POST /, PUT /{id}, DELETE /{id}
+- All endpoints require authentication (JWT token)
+- Return appropriate ResponseEntity responses
 
-Configure application.properties:
+Configuration
 
-text
-spring.datasource.url=jdbc:mysql://localhost:3306/ecommerce_db
+14. Application Properties
+Prompt:
+Create application.properties file:
+spring.datasource.url=jdbc:mysql://localhost:3306/productdb
 spring.datasource.username=root
-spring.datasource.password=your_password
+spring.datasource.password=yourpassword
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
-spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
-Create the package structure:
-
-text
-src/main/java/com/yourorg/ecommerce/
-├── config
-├── controller
-├── dto
-├── entity
-├── repository
-├── security
-└── service
-2. User Registration & Authentication
-2.1. Entity & Repository
-User entity:
-
-Fields: id, name, email, phone, password
-
-Annotations: @Entity, @Table
-
-Use Lombok: @Getter, @Setter, @NoArgsConstructor, @AllArgsConstructor
-
-UserRepository:
-
-java
-public interface UserRepository extends JpaRepository<User, Long> {
-    Optional<User> findByEmail(String email);
-    boolean existsByEmail(String email);
-}
-2.2. DTOs
-RegisterRequest:
-
-java
-public class RegisterRequest {
-    private String name;
-    private String email;
-    private String phone;
-    private String password;
-}
-LoginRequest:
-
-java
-public class LoginRequest {
-    private String email;
-    private String password;
-}
-JwtResponse:
-
-java
-public class JwtResponse {
-    private String jwtToken;
-}
-3. JWT Token Service
-Create JwtService with methods:
-
-java
-@Service
-public class JwtService {
-    @Value("${jwt.secret}")
-    private String secretKey;
-
-    private static final long EXPIRATION_MS = 24 * 60 * 60 * 1000;
-
-    public String generateToken(UserDetails userDetails) { /* … */ }
-    public String extractUsername(String token) { /* … */ }
-    public boolean isTokenValid(String token, UserDetails userDetails) { /* … */ }
-}
-Use HS256 algorithm via io.jsonwebtoken.Jwts.
-
-Load secret from application.properties or environment.
-
-Set 24-hour expiration.
-
-4. Authentication Controller
-java
-@RestController
-@RequestMapping("/auth")
-@CrossOrigin(origins = "http://localhost:4200")
-public class AuthController {
-    private final AuthenticationManager authManager;
-    private final UserRepository userRepo;
-    private final PasswordEncoder encoder;
-    private final JwtService jwtService;
-
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest req) { /* … */ }
-
-    @PostMapping("/login")
-    public ResponseEntity<JwtResponse> login(@RequestBody LoginRequest req) { /* … */ }
-}
-/register: Check existsByEmail, encode password, save user.
-
-/login: Authenticate via UsernamePasswordAuthenticationToken, generate JWT.
-
-5. Spring Security Configuration
-java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-    @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
-    @Bean AuthenticationManager authManager(AuthenticationConfiguration cfg) throws Exception {
-        return cfg.getAuthenticationManager();
-    }
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtFilter) throws Exception {
-        http
-            .csrf().disable()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            .and()
-            .authorizeRequests()
-                .antMatchers("/auth/**").permitAll()
-                .anyRequest().authenticated()
-            .and()
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
-    }
-}
-6. JWT Authentication Filter
-java
-@Component
-public class JwtAuthFilter extends OncePerRequestFilter {
-    private final JwtService jwtService;
-    private final UserDetailsService userDetailsSvc;
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
-            throws ServletException, IOException {
-        // Extract token, validate, set Authentication in SecurityContext
-    }
-}
-7. Custom UserDetailsService
-CustomUserDetails implements UserDetails:
-
-java
-public class CustomUserDetails implements UserDetails { /* wrap User entity */ }
-CustomUserDetailsService:
-
-java
-@Service
-public class CustomUserDetailsService implements UserDetailsService {
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        // fetch User by email and return CustomUserDetails
-    }
-}
-8. Product Entity & Repository
-Product entity:
-
-Fields: id, name, description, price, quantity
-
-Validation: @NotBlank, @Size, @Positive
-
-Annotations: @Entity, Lombok annotations
-
-ProductRepository:
-
-java
-public interface ProductRepository extends JpaRepository<Product, Long> { }
-9. Product Service & Controller
-9.1. ProductService
-java
-@Service
-public class ProductService {
-    // createProduct, getAllProducts, getProductById, updateProduct, deleteProduct
-}
-9.2. ProductController
-java
-@RestController
-@RequestMapping("/api/products")
-@CrossOrigin(origins = "http://localhost:4200")
-public class ProductController {
-    // @PostMapping("/"), @GetMapping("/"), @GetMapping("/{id}"),
-    // @PutMapping("/{id}"), @DeleteMapping("/{id}") — secured endpoints
-}
-Require valid JWT for all /api/products/** routes.
-
-10. Postman Test Plan
-Register New User
-POST http://localhost:8080/auth/register
-
-json
-{
-  "name": "User One",
-  "email": "user1@gmail.com",
-  "phone": "1234567890",
-  "password": "user123"
-}
-Login to Obtain JWT
-POST http://localhost:8080/auth/login
-
-json
-{
-  "email": "user1@gmail.com",
-  "password": "user123"
-}
-Use Token
-
-text
-Authorization: Bearer <jwtToken>
-Create Product
-POST http://localhost:8080/api/products
-
-json
-{
-  "name": "Laptop",
-  "description": "High-end gaming laptop",
-  "price": 150000,
-  "quantity": 5
-}
-Get All Products
-GET http://localhost:8080/api/products
-
-Get Product by ID
-GET http://localhost:8080/api/products/1
-
-Update Product
-PUT http://localhost:8080/api/products/1
-
-json
-{
-  "name": "Laptop Pro",
-  "description": "Upgraded model",
-  "price": 180000,
-  "quantity": 4
-}
-Delete Product
-DELETE http://localhost:8080/api/products/1
+server.port=8080
+15. Main Application Class
+Prompt:
+Create ProductAppApplication class in com.productapp:
+- @SpringBootApplication annotation
+- Main method with SpringApplication.run(ProductAppApplication.class, args)
